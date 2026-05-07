@@ -1,8 +1,10 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const Anthropic = require("@anthropic-ai/sdk");
 const fs = require("fs");
 const path = require("path");
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
 
 function loadRules() {
   const contextDir = path.join(__dirname, "../context");
@@ -26,28 +28,55 @@ function loadRules() {
 async function feAgent(task, plannerResult) {
   console.log("⚛️  FE Agent: 코드 생성 중...\n");
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
   const rules = loadRules();
 
-  const prompt = `
-    너는 시니어 React/TypeScript 프론트엔드 개발자야.
-    아래 규칙을 반드시 따라서 코드를 작성해줘.
-    
-    === 코드 규칙 ===
-    ${rules}
-    
-    === 기획 내용 ===
-    ${plannerResult}
-    
-    === 작업 ===
-    ${task}
-  `;
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 4096,
+    messages: [
+      {
+        role: "user",
+        content: `
+          너는 시니어 React/TypeScript 프론트엔드 개발자야.
+          아래 규칙을 반드시 따라서 코드를 작성해줘.
+          
+          === 코드 규칙 ===
+          ${rules}
+          
+          === 기획 내용 ===
+          ${plannerResult}
+          
+          === 작업 ===
+          ${task}
+          
+          === 출력 규칙 (반드시 지켜줘) ===
+          - 각 파일을 아래 형식으로 반드시 출력해줘.
+          - 파일 경로는 코드 블록 첫 줄에 주석으로 반드시 포함해야 해.
+          - 형식을 절대 바꾸지 마.
 
-  const result = await model.generateContent(prompt);
-  const text = result.response.text();
+          \`\`\`tsx
+          // src/components/LoginForm/LoginForm.tsx
+          [코드 내용]
+          \`\`\`
 
+          \`\`\`ts
+          // src/components/LoginForm/styled.ts
+          [코드 내용]
+          \`\`\`
+        `,
+      },
+    ],
+  });
+
+  const usage = {
+    model: "Claude",
+    input: response.usage.input_tokens,
+    output: response.usage.output_tokens,
+  };
+
+  const result = response.content[0].text;
   console.log("⚛️  FE Agent 완료 ✅\n");
-  return text;
+  return { result, usage };
 }
 
 module.exports = { feAgent };
