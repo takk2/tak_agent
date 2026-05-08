@@ -33,45 +33,61 @@ async function feAgent(task, plannerResult) {
   const response = await client.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 4096,
+    betas: ["prompt-caching-2024-07-31"],
     messages: [
       {
         role: "user",
-        content: `
-          너는 시니어 React/TypeScript 프론트엔드 개발자야.
-          아래 규칙을 반드시 따라서 코드를 작성해줘.
-          
-          === 코드 규칙 ===
-          ${rules}
-          
-          === 기획 내용 ===
-          ${plannerResult}
-          
-          === 작업 ===
-          ${task}
-          
-          === 출력 규칙 (반드시 지켜줘) ===
-          - 각 파일을 아래 형식으로 반드시 출력해줘.
-          - 파일 경로는 코드 블록 첫 줄에 주석으로 반드시 포함해야 해.
-          - 형식을 절대 바꾸지 마.
+        content: [
+          {
+            type: "text",
+            text: `너는 시니어 React/TypeScript 프론트엔드 개발자야.
+아래 규칙을 반드시 따라서 코드를 작성해줘.
 
-          \`\`\`tsx
-          // src/components/LoginForm/LoginForm.tsx
-          [코드 내용]
-          \`\`\`
+=== 코드 규칙 ===
+${rules}
 
-          \`\`\`ts
-          // src/components/LoginForm/styled.ts
-          [코드 내용]
-          \`\`\`
-        `,
+=== 출력 규칙 (반드시 지켜줘) ===
+- 각 파일을 아래 형식으로 반드시 출력해줘.
+- 파일 경로는 코드 블록 첫 줄에 주석으로 반드시 포함해야 해.
+- 형식을 절대 바꾸지 마.
+
+\`\`\`tsx
+// src/components/LoginForm/LoginForm.tsx
+[코드 내용]
+\`\`\`
+
+\`\`\`ts
+// src/components/LoginForm/styled.ts
+[코드 내용]
+\`\`\``,
+            cache_control: { type: "ephemeral" },
+          },
+          {
+            type: "text",
+            text: `=== 기획 내용 ===
+${plannerResult}
+
+=== 작업 ===
+${task}`,
+          },
+        ],
       },
     ],
   });
+
+  const cacheReadTokens = response.usage.cache_read_input_tokens || 0;
+  const cacheWriteTokens = response.usage.cache_creation_input_tokens || 0;
+
+  if (cacheReadTokens > 0) {
+    console.log("⚡ 캐시 히트 (context 재사용)\n");
+  }
 
   const usage = {
     model: "Claude",
     input: response.usage.input_tokens,
     output: response.usage.output_tokens,
+    cacheRead: cacheReadTokens,
+    cacheWrite: cacheWriteTokens,
   };
 
   const result = response.content[0].text;

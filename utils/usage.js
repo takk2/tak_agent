@@ -2,10 +2,12 @@ const os = require("os");
 const { createClient } = require("@supabase/supabase-js");
 
 const PRICING = {
-  Claude: { input: 3, output: 15 },
-  Gemini: { input: 0.075, output: 0.3 },
-  GPT: { input: 2.5, output: 10 },
+  Claude: { input: 3, cacheWrite: 3.75, cacheRead: 0.3, output: 15 },
+  Gemini: { input: 0.075, cacheWrite: 0.075, cacheRead: 0.01875, output: 0.3 },
+  GPT: { input: 2.5, cacheWrite: 2.5, cacheRead: 1.25, output: 10 },
 };
+
+const BUDGET_KRW = 100_000;
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL;
@@ -14,12 +16,48 @@ function getSupabase() {
   return createClient(url, key);
 }
 
-function calculateCost(model, inputTokens, outputTokens) {
+function calculateCost(model, inputTokens, outputTokens, cacheReadTokens = 0, cacheWriteTokens = 0) {
   const price = PRICING[model];
   return (
     (inputTokens / 1_000_000) * price.input +
-    (outputTokens / 1_000_000) * price.output
+    (outputTokens / 1_000_000) * price.output +
+    (cacheReadTokens / 1_000_000) * price.cacheRead +
+    (cacheWriteTokens / 1_000_000) * price.cacheWrite
   );
+}
+
+async function getTotalCostUSD() {
+  const supabase = getSupabase();
+  if (!supabase) return 0;
+
+  const { data, error } = await supabase.from("usage_history").select("cost_usd");
+  if (error || !data) return 0;
+
+  return data.reduce((sum, row) => sum + row.cost_usd, 0);
+}
+
+async function checkBudget() {
+  const KRW_RATE = parseFloat(process.env.KRW_RATE) || 1451;
+  const totalUSD = await getTotalCostUSD();
+  const totalKRW = Math.round(totalUSD * KRW_RATE);
+  const remainingKRW = BUDGET_KRW - totalKRW;
+
+  if (remainingKRW <= 0) {
+    console.log("\n🚫 사용 한도 초과!");
+    console.log(`   설정 한도: ₩${BUDGET_KRW.toLocaleString()}`);
+    console.log(`   누적 사용: ₩${totalKRW.toLocaleString()}`);
+    console.log("   더 이상 사용할 수 없습니다.\n");
+    process.exit(1);
+  }
+}
+
+async function printRemainingBudget() {
+  const KRW_RATE = parseFloat(process.env.KRW_RATE) || 1500;
+  const totalUSD = await getTotalCostUSD();
+  const totalKRW = Math.round(totalUSD * KRW_RATE);
+  const percent = ((totalKRW / BUDGET_KRW) * 100).toFixed(1);
+
+  console.log(`\n💳 예산 사용량: ${percent}%`);
 }
 
 async function saveUsageHistory(usages, totalCostUSD) {
@@ -74,7 +112,7 @@ async function printUsageHistory() {
     byDevice[device].push(row);
   });
 
-  console.log("\n📊 디바이스별 사용량 리포트");
+  console.log("\n📊 사용량 리포트");
   console.log("─".repeat(50));
 
   let grandTotalUSD = 0;
@@ -116,8 +154,11 @@ async function printUsageHistory() {
   });
 
   console.log("\n" + "─".repeat(50));
+  const grandTotalKRW = Math.round(grandTotalUSD * KRW_RATE);
+  const percent = ((grandTotalKRW / BUDGET_KRW) * 100).toFixed(1);
+
   console.log(
-    `💰 전체 누적 비용: $${grandTotalUSD.toFixed(4)} (₩${Math.round(grandTotalUSD * KRW_RATE).toLocaleString()})`,
+    `📈 누적 사용량: ₩${grandTotalKRW.toLocaleString()} / ₩${BUDGET_KRW.toLocaleString()} (${percent}%)`,
   );
   console.log("─".repeat(50));
 }
@@ -150,9 +191,25 @@ function printCostReport(usages) {
   console.log("─".repeat(50));
 }
 
+async function printUsageSummary() {
+  const KRW_RATE = parseFloat(process.env.KRW_RATE) || 1500;
+  const totalUSD = await getTotalCostUSD();
+  const totalKRW = Math.round(totalUSD * KRW_RATE);
+  const percent = ((totalKRW / BUDGET_KRW) * 100).toFixed(1);
+
+  console.log("\n📊 누적 사용량");
+  console.log("─".repeat(50));
+  console.log(`   총 비용: $${totalUSD.toFixed(4)} (₩${totalKRW.toLocaleString()})`);
+  console.log(`   📈 ₩${totalKRW.toLocaleString()} / ₩${BUDGET_KRW.toLocaleString()} (${percent}%)`);
+  console.log("─".repeat(50));
+}
+
 module.exports = {
   calculateCost,
   saveUsageHistory,
   printUsageHistory,
+  printUsageSummary,
   printCostReport,
+  checkBudget,
+  printRemainingBudget,
 };

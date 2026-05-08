@@ -1,54 +1,48 @@
-const Anthropic = require("@anthropic-ai/sdk");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 async function orchestrator(userRequest) {
   console.log("\n🎯 Orchestrator: 분석 중...\n");
 
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 1024,
-    messages: [
-      {
-        role: "user",
-        content: `
-          너는 개발 팀의 오케스트레이터야.
-          사용자의 입력이 프론트엔드 개발 작업인지, 일반 대화인지 판단해서 JSON으로 응답해줘.
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-          요청: ${userRequest}
+  const prompt = `
+    너는 개발 팀의 오케스트레이터야.
+    사용자의 입력이 프론트엔드 개발 작업인지, 일반 대화인지 판단해서 JSON으로 응답해줘.
 
-          --- 개발 작업인 경우 ---
-          {
-            "type": "task",
-            "plan": "전체 계획 요약",
-            "tasks": {
-              "planner": "기획 에이전트에게 줄 작업",
-              "frontend": "FE 에이전트에게 줄 작업",
-              "qa": "QA 에이전트에게 줄 작업"
-            }
-          }
+    요청: ${userRequest}
 
-          --- 일반 대화인 경우 ---
-          {
-            "type": "chat",
-            "response": "사용자에게 줄 답변"
-          }
+    --- 개발 작업인 경우 ---
+    {
+      "type": "task",
+      "plan": "전체 계획 요약",
+      "tasks": {
+        "planner": "기획 에이전트에게 줄 작업",
+        "frontend": "FE 에이전트에게 줄 작업",
+        "qa": "QA 에이전트에게 줄 작업"
+      }
+    }
 
-          JSON만 응답해줘.
-        `,
-      },
-    ],
-  });
+    --- 일반 대화인 경우 ---
+    {
+      "type": "chat",
+      "response": "사용자에게 줄 답변"
+    }
+
+    JSON만 응답해줘.
+  `;
+
+  const response = await model.generateContent(prompt);
+  const responseText = response.response.text();
 
   const usage = {
-    model: "Claude",
-    input: response.usage.input_tokens,
-    output: response.usage.output_tokens,
+    model: "Gemini",
+    input: response.response.usageMetadata?.promptTokenCount || 0,
+    output: response.response.usageMetadata?.candidatesTokenCount || 0,
   };
 
-  const text = response.content[0].text
+  const text = responseText
     .replace(/```json\n?/g, "")
     .replace(/```\n?/g, "")
     .trim();

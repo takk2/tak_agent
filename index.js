@@ -10,11 +10,12 @@ const { plannerAgent } = require("./agents/plannerAgent");
 const { feAgent } = require("./agents/feAgent");
 const { qaAgent } = require("./agents/qaAgent");
 const { models } = require("./agents/chatAgent");
-const { calculateCost, saveUsageHistory, printUsageHistory, printCostReport } = require("./utils/usage");
+const { calculateCost, saveUsageHistory, printUsageHistory, printUsageSummary, printCostReport, checkBudget, printRemainingBudget } = require("./utils/usage");
 const { parseFiles, createFiles, resolveOutputDir } = require("./utils/files");
 const { divider, printRunStart, printFileStart, printComplete, printError, printBanner, printChatBanner, printExit, printHelp, printChatResponse } = require("./utils/logger");
 
 async function runAgent(userRequest) {
+  await checkBudget();
   printRunStart(userRequest);
 
   const usages = [];
@@ -63,10 +64,11 @@ async function runAgent(userRequest) {
   } finally {
     if (usages.length > 0) {
       const totalCostUSD = usages.reduce((acc, { model, input, output }) => {
-        return acc + calculateCost(model, input, output);
+        return acc + calculateCost(model, input, output, cacheRead, cacheWrite);
       }, 0);
-      saveUsageHistory(usages, totalCostUSD);
+      await saveUsageHistory(usages, totalCostUSD);
       printCostReport(usages);
+      await printRemainingBudget();
     }
   }
 }
@@ -163,12 +165,15 @@ async function chatMode() {
         return;
       }
 
+      await checkBudget();
+
       try {
         const { reply, updatedMessages, usage } = await models[selectedModel].chat(messages, request);
         messages = updatedMessages;
         usages.push({ agent: "💬 Chat", ...usage });
         printChatResponse(reply);
-        await saveUsageHistory([{ agent: "💬 Chat", ...usage }], calculateCost(usage.model, usage.input, usage.output));
+        await saveUsageHistory([{ agent: "💬 Chat", ...usage }], calculateCost(usage.model, usage.input, usage.output, usage.cacheRead, usage.cacheWrite));
+        await printRemainingBudget();
       } catch (error) {
         printError(error.message);
       }
@@ -178,6 +183,60 @@ async function chatMode() {
   };
 
   ask();
+}
+
+async function usageMenu() {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  const afterView = (back) => {
+    console.log("\n1. 이전 메뉴  2. 종료");
+    rl.question("> ", (input) => {
+      const choice = input.trim();
+      if (choice === "1") {
+        back();
+      } else if (choice === "2") {
+        rl.close();
+      } else {
+        console.log("❌ 1 또는 2를 선택해주세요.");
+        afterView(back);
+      }
+    });
+  };
+
+  const show = () => {
+    console.log("\n📊 사용량 조회");
+    console.log("─".repeat(30));
+    console.log("1. 누적 사용량");
+    console.log("2. 디바이스별 조회");
+    console.log("3. 유저별 조회");
+    console.log("0. 종료");
+    console.log("─".repeat(30));
+
+    rl.question("> ", async (input) => {
+      const choice = input.trim();
+
+      if (choice === "1") {
+        await printUsageSummary();
+        afterView(show);
+      } else if (choice === "2") {
+        await printUsageHistory();
+        afterView(show);
+      } else if (choice === "3") {
+        console.log("\n🚧 준비중입니다.");
+        afterView(show);
+      } else if (choice === "0") {
+        rl.close();
+      } else {
+        console.log("❌ 0~3 중에서 선택해주세요.");
+        show();
+      }
+    });
+  };
+
+  show();
 }
 
 async function main() {
@@ -194,7 +253,7 @@ async function main() {
   }
 
   if (args === "--usage") {
-    await printUsageHistory();
+    await usageMenu();
     return;
   }
 
