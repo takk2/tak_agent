@@ -9,7 +9,7 @@ const { orchestrator } = require("./agents/orchestrator");
 const { plannerAgent } = require("./agents/plannerAgent");
 const { feAgent } = require("./agents/feAgent");
 const { qaAgent } = require("./agents/qaAgent");
-const { chat } = require("./agents/chatAgent");
+const { models } = require("./agents/chatAgent");
 const { calculateCost, saveUsageHistory, printUsageHistory, printCostReport } = require("./utils/usage");
 const { parseFiles, createFiles, resolveOutputDir } = require("./utils/files");
 const { divider, printRunStart, printFileStart, printComplete, printError, printBanner, printChatBanner, printExit, printHelp, printChatResponse } = require("./utils/logger");
@@ -116,7 +116,28 @@ async function chatMode() {
 
   printChatBanner();
 
+  // 모델 선택
+  const selectedModel = await new Promise((resolve) => {
+    const ask = () => {
+      rl.question("어떤 AI와 대화할까요?\n1. Claude\n2. Gemini\n3. GPT\n> ", (input) => {
+        const map = { "1": "claude", "2": "gemini", "3": "gpt" };
+        const model = map[input.trim()];
+        if (!model) {
+          console.log("❌ 1, 2, 3 중에서 선택해주세요.\n");
+          ask();
+          return;
+        }
+        resolve(model);
+      });
+    };
+    ask();
+  });
+
+  const modelName = models[selectedModel].label;
+  console.log(`\n✅ ${modelName}와 대화를 시작합니다. (종료: exit)\n`);
+
   const usages = [];
+  let messages = [];
 
   const ask = () => {
     rl.question("무엇이든 물어보세요!\n> ", async (input) => {
@@ -124,10 +145,6 @@ async function chatMode() {
 
       if (request === "exit") {
         if (usages.length > 0) {
-          const totalCostUSD = usages.reduce((acc, { model, input, output }) => {
-            return acc + calculateCost(model, input, output);
-          }, 0);
-          saveUsageHistory(usages, totalCostUSD);
           printCostReport(usages);
         }
         printExit();
@@ -136,7 +153,7 @@ async function chatMode() {
       }
 
       if (request === "--usage") {
-        printUsageHistory();
+        await printUsageHistory();
         ask();
         return;
       }
@@ -147,9 +164,11 @@ async function chatMode() {
       }
 
       try {
-        const { reply, usage } = await chat(request);
+        const { reply, updatedMessages, usage } = await models[selectedModel].chat(messages, request);
+        messages = updatedMessages;
         usages.push({ agent: "💬 Chat", ...usage });
         printChatResponse(reply);
+        await saveUsageHistory([{ agent: "💬 Chat", ...usage }], calculateCost(usage.model, usage.input, usage.output));
       } catch (error) {
         printError(error.message);
       }
