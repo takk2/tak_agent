@@ -45,8 +45,7 @@ function printExit() {
 }
 
 function printHelp() {
-  console.log('사용법: tak "만들고 싶은 기능"');
-  console.log("⚙️  개발 모드:  tak start");
+  console.log("⚙️  개발 모드:  tak dev");
   console.log("💬 대화 모드:  tak chat");
   console.log("📊 사용량 조회: tak --usage");
 }

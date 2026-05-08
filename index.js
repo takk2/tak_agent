@@ -183,7 +183,7 @@ async function chatMode() {
 async function main() {
   const args = process.argv[2];
 
-  if (args === "start") {
+  if (args === "dev") {
     await devMode();
     return;
   }
@@ -194,16 +194,12 @@ async function main() {
   }
 
   if (args === "--usage") {
-    printUsageHistory();
+    await printUsageHistory();
     return;
   }
 
-  if (!args) {
-    printHelp();
-    process.exit(1);
-  }
-
-  await runAgent(args);
+  printHelp();
+  process.exit(1);
 }
 
 main();
