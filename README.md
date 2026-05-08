@@ -87,7 +87,17 @@ tak start
 tak chat
 ```
 
+실행하면 먼저 대화할 AI를 고릅니다:
+
 ```
+어떤 AI와 대화할까요?
+1. Claude
+2. Gemini
+3. GPT
+> 1
+
+✅ Claude와 대화를 시작합니다. (종료: exit)
+
 무엇이든 물어보세요!
 > React랑 Next.js 차이가 뭐야?
 > styled-components 어떻게 쓰는 거야?
