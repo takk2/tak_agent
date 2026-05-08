@@ -9,9 +9,10 @@ const { orchestrator } = require("./agents/orchestrator");
 const { plannerAgent } = require("./agents/plannerAgent");
 const { feAgent } = require("./agents/feAgent");
 const { qaAgent } = require("./agents/qaAgent");
+const { chat } = require("./agents/chatAgent");
 const { calculateCost, saveUsageHistory, printUsageHistory, printCostReport } = require("./utils/usage");
 const { parseFiles, createFiles, resolveOutputDir } = require("./utils/files");
-const { divider, printRunStart, printFileStart, printComplete, printError, printBanner, printExit, printHelp } = require("./utils/logger");
+const { divider, printRunStart, printFileStart, printComplete, printError, printBanner, printChatBanner, printExit, printHelp, printChatResponse } = require("./utils/logger");
 
 async function runAgent(userRequest) {
   printRunStart(userRequest);
@@ -21,6 +22,12 @@ async function runAgent(userRequest) {
   try {
     const plan = await orchestrator(userRequest);
     usages.push({ agent: "🎯 Orchestrator", ...plan.usage });
+
+    if (plan.type === "chat") {
+      printChatResponse(plan.response);
+      return;
+    }
+
     divider();
 
     const { result: plannerResult, usage: plannerUsage } = await plannerAgent(plan.tasks.planner);
@@ -64,7 +71,7 @@ async function runAgent(userRequest) {
   }
 }
 
-async function interactiveMode() {
+async function devMode() {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -101,11 +108,69 @@ async function interactiveMode() {
   ask();
 }
 
+async function chatMode() {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  printChatBanner();
+
+  const usages = [];
+
+  const ask = () => {
+    rl.question("무엇이든 물어보세요!\n> ", async (input) => {
+      const request = input.trim();
+
+      if (request === "exit") {
+        if (usages.length > 0) {
+          const totalCostUSD = usages.reduce((acc, { model, input, output }) => {
+            return acc + calculateCost(model, input, output);
+          }, 0);
+          saveUsageHistory(usages, totalCostUSD);
+          printCostReport(usages);
+        }
+        printExit();
+        rl.close();
+        return;
+      }
+
+      if (request === "--usage") {
+        printUsageHistory();
+        ask();
+        return;
+      }
+
+      if (!request) {
+        ask();
+        return;
+      }
+
+      try {
+        const { reply, usage } = await chat(request);
+        usages.push({ agent: "💬 Chat", ...usage });
+        printChatResponse(reply);
+      } catch (error) {
+        printError(error.message);
+      }
+
+      ask();
+    });
+  };
+
+  ask();
+}
+
 async function main() {
   const args = process.argv[2];
 
   if (args === "start") {
-    await interactiveMode();
+    await devMode();
+    return;
+  }
+
+  if (args === "chat") {
+    await chatMode();
     return;
   }
 

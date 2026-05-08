@@ -26,8 +26,17 @@ function printError(message) {
 function printBanner() {
   console.log("\n╔════════════════════════════════╗");
   console.log("║     🤖 TAK AI 팀 준비 완료!     ║");
+  console.log("║          ⚙️  개발 모드           ║");
   console.log("╚════════════════════════════════╝\n");
   console.log(`📁 작업 경로: ${process.cwd()}`);
+  console.log("💡 종료: exit  |  사용량 조회: --usage\n");
+}
+
+function printChatBanner() {
+  console.log("\n╔════════════════════════════════╗");
+  console.log("║     🤖 TAK AI 팀 준비 완료!     ║");
+  console.log("║          💬 대화 모드            ║");
+  console.log("╚════════════════════════════════╝\n");
   console.log("💡 종료: exit  |  사용량 조회: --usage\n");
 }
 
@@ -36,9 +45,14 @@ function printExit() {
 }
 
 function printHelp() {
-  console.log('❌ 사용법: tak "만들고 싶은 기능"');
-  console.log("🚀 인터랙티브 모드: tak start");
+  console.log('사용법: tak "만들고 싶은 기능"');
+  console.log("⚙️  개발 모드:  tak start");
+  console.log("💬 대화 모드:  tak chat");
   console.log("📊 사용량 조회: tak --usage");
+}
+
+function printChatResponse(response) {
+  console.log(`\n🤖 ${response}\n`);
 }
 
 module.exports = {
@@ -48,6 +62,8 @@ module.exports = {
   printComplete,
   printError,
   printBanner,
+  printChatBanner,
   printExit,
   printHelp,
+  printChatResponse,
 };
