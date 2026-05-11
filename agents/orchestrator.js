@@ -2,15 +2,19 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-async function orchestrator(userRequest) {
+async function orchestrator(userRequest, projectContext = null) {
   console.log("\n🎯 Orchestrator: 분석 중...\n");
 
   const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
+  const contextSection = projectContext
+    ? `\n${projectContext}\n`
+    : "";
+
   const prompt = `
     너는 개발 팀의 오케스트레이터야.
     사용자의 입력이 프론트엔드 개발 작업인지, 일반 대화인지 판단해서 JSON으로 응답해줘.
-
+    ${contextSection}
     요청: ${userRequest}
 
     --- 개발 작업인 경우 ---
@@ -57,3 +61,4 @@ async function orchestrator(userRequest) {
 }
 
 module.exports = { orchestrator };
+

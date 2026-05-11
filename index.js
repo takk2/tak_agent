@@ -1,9 +1,15 @@
 #!/usr/bin/env node
 
-require("dotenv").config({ path: require("path").resolve(__dirname, ".env") });
-const readline = require("readline");
-const fs = require("fs");
 const path = require("path");
+const fs = require("fs");
+const readline = require("readline");
+
+// 1. 글로벌 config 적용 (~/.tak-agent/config.json)
+const { applyConfig, loadConfig, saveConfig, hasRequiredKeys, CONFIG_PATH } = require("./utils/config");
+applyConfig();
+
+// 2. 로컬 .env 가 있으면 오버라이드 (하위 호환)
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 const { orchestrator } = require("./agents/orchestrator");
 const { plannerAgent } = require("./agents/plannerAgent");
@@ -12,16 +18,17 @@ const { qaAgent } = require("./agents/qaAgent");
 const { models } = require("./agents/chatAgent");
 const { calculateCost, saveUsageHistory, printUsageHistory, printUsageSummary, printCostReport, checkBudget, printRemainingBudget } = require("./utils/usage");
 const { parseFiles, createFiles, resolveOutputDir } = require("./utils/files");
-const { divider, printRunStart, printFileStart, printComplete, printError, printBanner, printChatBanner, printExit, printHelp, printChatResponse } = require("./utils/logger");
+const { scanProjectContext } = require("./utils/projectContext");
+const { divider, printRunStart, printFileStart, printComplete, printError, printBanner, printChatBanner, printExit, printHelp, printChatResponse, printInitBanner, printInitDone, printNoConfig } = require("./utils/logger");
 
-async function runAgent(userRequest) {
+async function runAgent(userRequest, projectContext = null) {
   await checkBudget();
   printRunStart(userRequest);
 
   const usages = [];
 
   try {
-    const plan = await orchestrator(userRequest);
+    const plan = await orchestrator(userRequest, projectContext);
     usages.push({ agent: "🎯 Orchestrator", ...plan.usage });
 
     if (plan.type === "chat") {
@@ -31,15 +38,15 @@ async function runAgent(userRequest) {
 
     divider();
 
-    const { result: plannerResult, usage: plannerUsage } = await plannerAgent(plan.tasks.planner);
+    const { result: plannerResult, usage: plannerUsage } = await plannerAgent(plan.tasks.planner, projectContext);
     usages.push({ agent: "📋 기획 Agent", ...plannerUsage });
     divider();
 
-    const { result: feResult, usage: feUsage } = await feAgent(plan.tasks.frontend, plannerResult);
+    const { result: feResult, usage: feUsage } = await feAgent(plan.tasks.frontend, plannerResult, projectContext);
     usages.push({ agent: "⚛️  FE Agent", ...feUsage });
     divider();
 
-    const { result: qaResult, usage: qaUsage } = await qaAgent(plan.tasks.qa, feResult);
+    const { result: qaResult, usage: qaUsage } = await qaAgent(plan.tasks.qa, feResult, projectContext);
     usages.push({ agent: "✅ QA Agent", ...qaUsage });
     divider();
 
@@ -74,12 +81,19 @@ async function runAgent(userRequest) {
 }
 
 async function devMode() {
+  if (!hasRequiredKeys()) {
+    printNoConfig();
+    return;
+  }
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
 
-  printBanner();
+  // 프로젝트 컨텍스트 최초 1회 스캔
+  const { context: projectContext, detected } = scanProjectContext();
+  printBanner(detected);
 
   const ask = () => {
     rl.question("어떤 기능을 만들까요?\n> ", async (input) => {
@@ -102,12 +116,59 @@ async function devMode() {
         return;
       }
 
-      await runAgent(request);
+      await runAgent(request, projectContext);
       ask();
     });
   };
 
   ask();
+}
+
+async function initMode() {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  const question = (q) => new Promise((resolve) => rl.question(q, resolve));
+
+  printInitBanner(CONFIG_PATH);
+
+  const current = loadConfig();
+  const mask = (val) => (val ? val.slice(0, 8) + "..." : null);
+
+  const promptKey = async (num, total, label, key, defaultVal = "") => {
+    const cur = current[key] || process.env[key];
+    const curDisplay = cur ? `현재: ${mask(cur)} (엔터로 유지)` : "미설정 (엔터로 건너뜀)";
+    console.log(`[${num}/${total}] ${label}`);
+    console.log(curDisplay);
+    const val = (await question("> ")).trim();
+    console.log();
+    return val || cur || defaultVal;
+  };
+
+  const updates = {};
+
+  updates.ANTHROPIC_API_KEY = await promptKey(1, 6, "Anthropic API Key (Claude)", "ANTHROPIC_API_KEY");
+  updates.GEMINI_API_KEY = await promptKey(2, 6, "Google API Key (Gemini)", "GEMINI_API_KEY");
+  updates.OPENAI_API_KEY = await promptKey(3, 6, "OpenAI API Key (GPT)", "OPENAI_API_KEY");
+
+  console.log("─".repeat(40));
+  console.log("📊 사용량 원격 저장 설정 (선택사항)");
+  console.log("   미설정 시 ~/.tak-agent/usage.json 에 로컬 저장됩니다.\n");
+
+  updates.SUPABASE_URL = await promptKey(4, 6, "Supabase URL", "SUPABASE_URL");
+  updates.SUPABASE_PUBLISHABLE_KEY = await promptKey(5, 6, "Supabase Publishable Key", "SUPABASE_PUBLISHABLE_KEY");
+  updates.DEVICE_NAME = await promptKey(6, 6, "디바이스 이름 (사용량 구분용, 기본값: 컴퓨터 이름)", "DEVICE_NAME");
+
+  // 빈 값 제거
+  Object.keys(updates).forEach((k) => {
+    if (!updates[k]) delete updates[k];
+  });
+
+  saveConfig(updates);
+  printInitDone(CONFIG_PATH);
+  rl.close();
 }
 
 async function chatMode() {
@@ -241,6 +302,11 @@ async function usageMenu() {
 
 async function main() {
   const args = process.argv[2];
+
+  if (args === "init") {
+    await initMode();
+    return;
+  }
 
   if (args === "dev") {
     await devMode();

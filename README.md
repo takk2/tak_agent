@@ -1,6 +1,7 @@
 # tak-agent
 
-말로 설명하면 AI가 React 코드를 만들어주는 도구입니다.
+말로 설명하면 AI가 React 코드를 만들어주는 도구입니다.  
+실행한 프로젝트의 구조와 규칙을 자동으로 파악해서, 그 프로젝트에 맞는 코드를 생성합니다.
 
 ---
 
@@ -19,32 +20,34 @@ cd tak-agent
 npm install
 ```
 
-### 3. API 키 입력
-
-`.env.example` 파일을 복사해서 `.env` 파일을 만들고, 키를 입력합니다.
-
-```bash
-cp .env.example .env
-```
-
-`.env` 파일을 열면 이렇게 생겼습니다:
-
-```
-ANTHROPIC_API_KEY=   ← Claude 키 입력
-GEMINI_API_KEY=      ← Gemini 키 입력
-OPENAI_API_KEY=      ← OpenAI 키 입력
-```
-
-> API 키가 없다면?
-> - Claude: https://console.anthropic.com
-> - Gemini: https://aistudio.google.com/apikey
-> - OpenAI: https://platform.openai.com/api-keys
-
-### 4. 어디서든 쓸 수 있게 등록
+### 3. 어디서든 쓸 수 있게 등록
 
 ```bash
 npm link
 ```
+
+### 4. API 키 설정 (최초 1회)
+
+```bash
+tak init
+```
+
+실행하면 안내에 따라 API 키를 입력합니다. 키는 `~/.tak-agent/config.json`에 저장되고, 이후 어떤 프로젝트에서 실행해도 자동으로 불러옵니다.
+
+```
+[1/4] Anthropic API Key (Claude)
+미설정 (엔터로 건너뜀)
+> sk-ant-...
+
+[2/4] Google API Key (Gemini)
+미설정 (엔터로 건너뜀)
+> AIza...
+```
+
+> API 키 발급처:
+> - Claude: https://console.anthropic.com
+> - Gemini: https://aistudio.google.com/apikey
+> - OpenAI: https://platform.openai.com/api-keys
 
 ---
 
@@ -59,9 +62,17 @@ cd ~/내-프로젝트
 tak dev
 ```
 
-그러면 이렇게 나옵니다:
+실행하면 프로젝트를 자동으로 스캔합니다:
 
 ```
+╔════════════════════════════════╗
+║     🤖 TAK AI 팀 준비 완료!     ║
+║          ⚙️  개발 모드           ║
+╚════════════════════════════════╝
+
+📁 작업 경로: /Users/me/my-nextjs-project
+🔍 프로젝트 감지: package.json (47개 의존성), .cursorrules, tsconfig.json, src/ 구조
+
 어떤 기능을 만들까요?
 >
 ```
@@ -74,14 +85,13 @@ tak dev
 > 다크모드 토글 버튼 만들어줘
 ```
 
-완료되면 현재 폴더 안에 파일이 자동으로 생성됩니다.
+AI가 프로젝트의 기술 스택, 디렉토리 구조, 코딩 컨벤션을 파악한 뒤 알맞은 위치에 파일을 생성합니다.
 
 ---
 
 ### 질문하기 — `tak chat`
 
 코드 생성 없이 AI에게 개발 관련 질문을 할 수 있습니다.
-어떤 폴더에서 실행해도 상관없습니다.
 
 ```bash
 tak chat
@@ -116,13 +126,25 @@ tak --usage
 
 ---
 
-## 코드 스타일 바꾸기
+## 프로젝트 규칙 설정
 
-`context/` 폴더 안의 파일을 수정하면 AI가 만들어주는 코드 스타일이 바뀝니다.
+프로젝트 루트에 아래 파일 중 하나를 만들어두면 AI가 자동으로 읽어서 반영합니다.
 
 | 파일 | 설명 |
 |---|---|
-| `react-components.md` | 컴포넌트 구조나 이름 짓는 방식 |
+| `CLAUDE.md` | 프로젝트 전용 AI 규칙 |
+| `AGENTS.md` | 에이전트 행동 지침 |
+| `.cursorrules` | Cursor 스타일 규칙 |
+
+파일이 없어도 `package.json`, `tsconfig.json`, 디렉토리 구조를 자동으로 파악합니다.
+
+### tak-agent 기본 코드 스타일
+
+프로젝트 규칙이 없을 경우 `context/` 폴더의 기본 규칙을 사용합니다.
+
+| 파일 | 설명 |
+|---|---|
+| `react-components.md` | 컴포넌트 구조, 이름 짓는 방식 |
 | `styled-components.md` | 스타일 작성 방식 |
 | `agent-discipline.md` | 코드 수정 범위나 원칙 |
 
@@ -136,5 +158,11 @@ npm link
 ```
 다시 실행해보세요.
 
-**API 오류가 날 때**
-`.env` 파일에 키가 제대로 입력되어 있는지 확인해보세요.
+**API 키 오류가 날 때**
+```bash
+tak init
+```
+를 다시 실행해서 키를 확인해주세요.
+
+**특정 프로젝트에서만 다른 키를 쓰고 싶을 때**  
+프로젝트 루트에 `.env` 파일을 만들면 글로벌 설정보다 우선 적용됩니다.

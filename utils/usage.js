@@ -1,4 +1,6 @@
 const os = require("os");
+const fs = require("fs");
+const path = require("path");
 const { createClient } = require("@supabase/supabase-js");
 
 const PRICING = {
@@ -8,12 +10,34 @@ const PRICING = {
 };
 
 const BUDGET_KRW = 100_000;
+const KRW_RATE = 1500;
+const LOCAL_USAGE_PATH = path.join(os.homedir(), ".tak-agent", "usage.json");
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_PUBLISHABLE_KEY;
   if (!url || !key) return null;
   return createClient(url, key);
+}
+
+function readLocalUsage() {
+  if (!fs.existsSync(LOCAL_USAGE_PATH)) return [];
+  try {
+    return JSON.parse(fs.readFileSync(LOCAL_USAGE_PATH, "utf-8"));
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalUsage(rows) {
+  const dir = path.dirname(LOCAL_USAGE_PATH);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(LOCAL_USAGE_PATH, JSON.stringify(rows, null, 2), "utf-8");
+}
+
+function appendLocalUsage(newRows) {
+  const existing = readLocalUsage();
+  writeLocalUsage([...existing, ...newRows]);
 }
 
 function calculateCost(model, inputTokens, outputTokens, cacheReadTokens = 0, cacheWriteTokens = 0) {
@@ -28,16 +52,19 @@ function calculateCost(model, inputTokens, outputTokens, cacheReadTokens = 0, ca
 
 async function getTotalCostUSD() {
   const supabase = getSupabase();
-  if (!supabase) return 0;
 
-  const { data, error } = await supabase.from("usage_history").select("cost_usd");
-  if (error || !data) return 0;
+  if (supabase) {
+    const { data, error } = await supabase.from("usage_history").select("cost_usd");
+    if (error || !data) return 0;
+    return data.reduce((sum, row) => sum + row.cost_usd, 0);
+  }
 
-  return data.reduce((sum, row) => sum + row.cost_usd, 0);
+  // 로컬 파일에서 합산
+  const rows = readLocalUsage();
+  return rows.reduce((sum, row) => sum + (row.cost_usd || 0), 0);
 }
 
 async function checkBudget() {
-  const KRW_RATE = parseFloat(process.env.KRW_RATE) || 1451;
   const totalUSD = await getTotalCostUSD();
   const totalKRW = Math.round(totalUSD * KRW_RATE);
   const remainingKRW = BUDGET_KRW - totalKRW;
@@ -52,7 +79,6 @@ async function checkBudget() {
 }
 
 async function printRemainingBudget() {
-  const KRW_RATE = parseFloat(process.env.KRW_RATE) || 1500;
   const totalUSD = await getTotalCostUSD();
   const totalKRW = Math.round(totalUSD * KRW_RATE);
   const percent = ((totalKRW / BUDGET_KRW) * 100).toFixed(1);
@@ -61,42 +87,51 @@ async function printRemainingBudget() {
 }
 
 async function saveUsageHistory(usages, totalCostUSD) {
-  const supabase = getSupabase();
-  if (!supabase) {
-    console.warn("⚠️  Supabase 설정이 없어 사용량이 저장되지 않습니다.");
-    return;
-  }
-
+  const device = process.env.DEVICE_NAME || os.hostname();
   const rows = usages.map(({ agent, model, input, output }) => ({
-    device: process.env.DEVICE_NAME || os.hostname(),
+    device,
     agent,
     model,
     input_tokens: input,
     output_tokens: output,
     cost_usd: calculateCost(model, input, output),
+    created_at: new Date().toISOString(),
   }));
 
-  const { error } = await supabase.from("usage_history").insert(rows);
-  if (error) console.error("Supabase 저장 실패:", error.message);
+  const supabase = getSupabase();
+  if (supabase) {
+    const { error } = await supabase.from("usage_history").insert(rows);
+    if (error) {
+      console.error("Supabase 저장 실패:", error.message);
+      console.log("💾 로컬에 저장합니다...");
+      appendLocalUsage(rows);
+    }
+  } else {
+    // 로컬 파일에 저장
+    appendLocalUsage(rows);
+  }
 }
 
 async function printUsageHistory() {
+  let data;
+
   const supabase = getSupabase();
-  if (!supabase) {
-    console.log("⚠️  Supabase 설정이 없습니다.");
-    return;
-  }
+  if (supabase) {
+    const { data: remoteData, error } = await supabase
+      .from("usage_history")
+      .select("*")
+      .order("created_at", { ascending: true });
 
-  const KRW_RATE = parseFloat(process.env.KRW_RATE) || 1451;
-
-  const { data, error } = await supabase
-    .from("usage_history")
-    .select("*")
-    .order("created_at", { ascending: true });
-
-  if (error) {
-    console.error("조회 실패:", error.message);
-    return;
+    if (error) {
+      console.error("조회 실패:", error.message);
+      return;
+    }
+    data = remoteData;
+  } else {
+    data = readLocalUsage();
+    if (data.length > 0) {
+      console.log(`💾 로컬 저장 데이터 (${LOCAL_USAGE_PATH})\n`);
+    }
   }
 
   if (!data || data.length === 0) {
@@ -164,7 +199,6 @@ async function printUsageHistory() {
 }
 
 function printCostReport(usages) {
-  const KRW_RATE = parseFloat(process.env.KRW_RATE) || 1451;
 
   console.log("\n💰 토큰 사용량 리포트");
   console.log("─".repeat(50));
@@ -192,7 +226,6 @@ function printCostReport(usages) {
 }
 
 async function printUsageSummary() {
-  const KRW_RATE = parseFloat(process.env.KRW_RATE) || 1500;
   const totalUSD = await getTotalCostUSD();
   const totalKRW = Math.round(totalUSD * KRW_RATE);
   const percent = ((totalKRW / BUDGET_KRW) * 100).toFixed(1);

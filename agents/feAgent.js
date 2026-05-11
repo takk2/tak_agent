@@ -6,13 +6,13 @@ const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-function loadRules() {
+function loadAgentRules(includeGenericRules = true) {
   const contextDir = path.join(__dirname, "../context");
-  const files = [
-    "agent-discipline.md",
-    "react-components.md",
-    "styled-components.md",
-  ];
+
+  const alwaysLoad = ["agent-discipline.md"];
+  const genericRules = ["react-components.md", "styled-components.md"];
+
+  const files = includeGenericRules ? [...alwaysLoad, ...genericRules] : alwaysLoad;
 
   return files
     .map((file) => {
@@ -22,13 +22,16 @@ function loadRules() {
       }
       return "";
     })
+    .filter(Boolean)
     .join("\n\n");
 }
 
-async function feAgent(task, plannerResult) {
+async function feAgent(task, plannerResult, projectContext = null) {
   console.log("⚛️  FE Agent: 코드 생성 중...\n");
 
-  const rules = loadRules();
+  // 프로젝트 컨텍스트가 있으면 일반 규칙 대신 프로젝트 규칙 사용
+  const agentRules = loadAgentRules(!projectContext);
+  const contextSection = projectContext ? `\n${projectContext}\n` : "";
 
   const response = await client.messages.create({
     model: "claude-sonnet-4-6",
@@ -43,9 +46,9 @@ async function feAgent(task, plannerResult) {
             text: `너는 시니어 React/TypeScript 프론트엔드 개발자야.
 아래 규칙을 반드시 따라서 코드를 작성해줘.
 
-=== 코드 규칙 ===
-${rules}
-
+=== 에이전트 규칙 ===
+${agentRules}
+${contextSection}
 === 출력 규칙 (반드시 지켜줘) ===
 - 각 파일을 아래 형식으로 반드시 출력해줘.
 - 파일 경로는 코드 블록 첫 줄에 주석으로 반드시 포함해야 해.
@@ -96,3 +99,4 @@ ${task}`,
 }
 
 module.exports = { feAgent };
+
