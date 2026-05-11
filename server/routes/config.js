@@ -1,23 +1,26 @@
+import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
+
+const router = Router();
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_PUBLISHABLE_KEY
 );
 
-export default async function configRoutes(fastify, options) {
-  // 사용자 config 조회
-  fastify.get('/', async (request, reply) => {
-    const token = request.headers.authorization?.replace('Bearer ', '');
+// 사용자 config 조회
+router.get('/', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
 
     if (!token) {
-      return reply.code(401).send({ error: 'Unauthorized' });
+      return res.status(401).json({ error: 'Unauthorized' });
     }
 
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
 
     if (authError) {
-      return reply.code(401).send({ error: authError.message });
+      return res.status(401).json({ error: authError.message });
     }
 
     const { data, error } = await supabase
@@ -27,27 +30,31 @@ export default async function configRoutes(fastify, options) {
       .single();
 
     if (error && error.code !== 'PGRST116') {
-      return reply.code(400).send({ error: error.message });
+      return res.status(400).json({ error: error.message });
     }
 
-    return { config: data || {} };
-  });
+    res.json({ config: data || {} });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  // 사용자 config 저장
-  fastify.post('/', async (request, reply) => {
-    const token = request.headers.authorization?.replace('Bearer ', '');
+// 사용자 config 저장
+router.post('/', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
 
     if (!token) {
-      return reply.code(401).send({ error: 'Unauthorized' });
+      return res.status(401).json({ error: 'Unauthorized' });
     }
 
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
 
     if (authError) {
-      return reply.code(401).send({ error: authError.message });
+      return res.status(401).json({ error: authError.message });
     }
 
-    const { api_keys, settings } = request.body;
+    const { api_keys, settings } = req.body;
 
     const { data, error } = await supabase
       .from('user_configs')
@@ -61,9 +68,13 @@ export default async function configRoutes(fastify, options) {
       .single();
 
     if (error) {
-      return reply.code(400).send({ error: error.message });
+      return res.status(400).json({ error: error.message });
     }
 
-    return { config: data };
-  });
-}
+    res.json({ config: data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+export default router;

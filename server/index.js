@@ -1,6 +1,5 @@
-import Fastify from 'fastify';
-import cors from '@fastify/cors';
-import staticFiles from '@fastify/static';
+import express from 'express';
+import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import dotenv from 'dotenv';
@@ -8,57 +7,39 @@ import dotenv from 'dotenv';
 // Load environment variables
 dotenv.config({ path: join(dirname(fileURLToPath(import.meta.url)), '..', '.env') });
 
-const fastify = Fastify({
-  logger: {
-    level: 'info',
-    transport: {
-      target: 'pino-pretty',
-    },
-  },
-});
+const app = express();
 
-// CORS 설정
-await fastify.register(cors, {
-  origin: true,
-});
-
-// Static files (프론트엔드 빌드)
-const frontendDist = join(dirname(fileURLToPath(import.meta.url)), '..', 'frontend', 'dist');
-await fastify.register(staticFiles, {
-  root: frontendDist,
-  prefix: '/',
-});
+// Middleware
+app.use(cors());
+app.use(express.json());
 
 // Routes
 import authRoutes from './routes/auth.js';
 import configRoutes from './routes/config.js';
 
-await fastify.register(authRoutes, { prefix: '/api/auth' });
-await fastify.register(configRoutes, { prefix: '/api/config' });
+app.use('/api/auth', authRoutes);
+app.use('/api/config', configRoutes);
 
 // Health check
-fastify.get('/api/health', async (request, reply) => {
-  return { status: 'ok', timestamp: new Date().toISOString() };
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Static files (프론트엔드 빌드)
+const frontendDist = join(dirname(fileURLToPath(import.meta.url)), '..', 'frontend', 'dist');
+app.use(express.static(frontendDist));
 
 // SPA fallback
-fastify.setNotFoundHandler((request, reply) => {
-  if (request.url.startsWith('/api')) {
-    reply.code(404).send({ error: 'Not found' });
+app.get('*', (req, res) => {
+  if (req.url.startsWith('/api')) {
+    res.status(404).json({ error: 'Not found' });
   } else {
-    reply.sendFile('index.html');
+    res.sendFile(join(frontendDist, 'index.html'));
   }
 });
 
-const start = async () => {
-  try {
-    const port = process.env.PORT || 3000;
-    await fastify.listen({ port, host: '0.0.0.0' });
-    console.log(`🚀 Server running on http://localhost:${port}`);
-  } catch (err) {
-    fastify.log.error(err);
-    process.exit(1);
-  }
-};
-
-start();
+// Start server
+const port = process.env.PORT || 3000;
+app.listen(port, '0.0.0.0', () => {
+  console.log(`🚀 Server running on http://localhost:${port}`);
+});
