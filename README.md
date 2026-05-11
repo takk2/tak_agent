@@ -35,13 +35,19 @@ tak init
 실행하면 안내에 따라 API 키를 입력합니다. 키는 `~/.tak-agent/config.json`에 저장되고, 이후 어떤 프로젝트에서 실행해도 자동으로 불러옵니다.
 
 ```
-[1/4] Anthropic API Key (Claude)
+[1/6] Anthropic API Key (Claude)
 미설정 (엔터로 건너뜀)
 > sk-ant-...
 
-[2/4] Google API Key (Gemini)
+[2/6] Google API Key (Gemini)
 미설정 (엔터로 건너뜀)
 > AIza...
+
+...
+
+[4/6] Supabase URL (선택사항, 엔터로 건너뜀)
+[5/6] Supabase Publishable Key (선택사항, 엔터로 건너뜀)
+[6/6] 디바이스 이름 (선택사항, 엔터로 건너뜀)
 ```
 
 > API 키 발급처:
