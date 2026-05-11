@@ -1,8 +1,14 @@
 const OpenAI = require("openai");
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+let client;
+function getOpenAIClient() {
+  if (!client) {
+    client = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+  return client;
+}
 
 async function plannerAgent(task, projectContext = null) {
   console.log("📋 기획 Agent: 구조 설계 중...\n");
@@ -11,7 +17,7 @@ async function plannerAgent(task, projectContext = null) {
     ? `\n${projectContext}\n`
     : "";
 
-  const response = await client.chat.completions.create({
+  const response = await getOpenAIClient().chat.completions.create({
     model: "gpt-4o",
     messages: [
       {
