@@ -3,7 +3,7 @@ const { createClient } = require("@supabase/supabase-js");
 
 const PRICING = {
   Claude: { input: 3, cacheWrite: 3.75, cacheRead: 0.3, output: 15 },
-  Gemini: { input: 0.075, cacheWrite: 0.075, cacheRead: 0.01875, output: 0.3 },
+  Gemini: { input: 0.3, cacheWrite: 0.08, cacheRead: 0.03, output: 2.5 },
   GPT: { input: 2.5, cacheWrite: 2.5, cacheRead: 1.25, output: 10 },
 };
 

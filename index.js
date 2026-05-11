@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-require("dotenv").config();
+require("dotenv").config({ path: require("path").resolve(__dirname, ".env") });
 const readline = require("readline");
 const fs = require("fs");
 const path = require("path");
@@ -63,7 +63,7 @@ async function runAgent(userRequest) {
     printError(error.message);
   } finally {
     if (usages.length > 0) {
-      const totalCostUSD = usages.reduce((acc, { model, input, output }) => {
+      const totalCostUSD = usages.reduce((acc, { model, input, output, cacheRead = 0, cacheWrite = 0 }) => {
         return acc + calculateCost(model, input, output, cacheRead, cacheWrite);
       }, 0);
       await saveUsageHistory(usages, totalCostUSD);
