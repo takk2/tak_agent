@@ -125,6 +125,53 @@ async function devMode() {
 }
 
 async function initMode() {
+  // 웹 기반 init 모드
+  console.log("\n🚀 TAK Agent 초기 설정");
+  console.log("─".repeat(40));
+  console.log("웹 브라우저에서 설정을 진행합니다...\n");
+
+  const { spawn } = require("child_process");
+  const { platform } = require("os");
+
+  // 서버 시작
+  const serverProcess = spawn("node", ["server/index.js"], {
+    cwd: __dirname,
+    stdio: "inherit",
+    env: { ...process.env, PORT: "3000" },
+  });
+
+  // 잠시 대기 후 브라우저 열기
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+
+  const url = "http://localhost:3000";
+  const openCommand = platform() === "darwin" ? "open" : platform() === "win32" ? "start" : "xdg-open";
+
+  try {
+    spawn(openCommand, [url], { detached: true, stdio: "ignore" }).unref();
+    console.log(`✅ 브라우저를 열었습니다: ${url}`);
+    console.log("\n💡 설정 완료 후 Ctrl+C를 눌러 종료하세요.\n");
+  } catch (err) {
+    console.log(`⚠️  자동으로 브라우저를 열 수 없습니다. 수동으로 접속하세요: ${url}\n`);
+  }
+
+  // Ctrl+C 핸들러
+  process.on("SIGINT", () => {
+    console.log("\n\n👋 설정을 종료합니다...");
+    serverProcess.kill();
+    process.exit(0);
+  });
+
+  // 서버 프로세스가 종료되면 같이 종료
+  serverProcess.on("exit", (code) => {
+    if (code !== 0) {
+      console.error(`\n❌ 서버가 종료되었습니다. 코드: ${code}`);
+    }
+    process.exit(code);
+  });
+}
+
+async function initModeCLI() {
+  // 기존 CLI 기반 init 모드 (하위 호환)
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -307,9 +354,15 @@ async function usageMenu() {
 
 async function main() {
   const args = process.argv[2];
+  const flags = process.argv.slice(3);
 
   if (args === "init") {
-    await initMode();
+    // --cli 플래그가 있으면 기존 CLI 모드, 없으면 웹 모드
+    if (flags.includes("--cli")) {
+      await initModeCLI();
+    } else {
+      await initMode();
+    }
     return;
   }
 
