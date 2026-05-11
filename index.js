@@ -172,6 +172,11 @@ async function initMode() {
 }
 
 async function chatMode() {
+  if (!hasRequiredKeys()) {
+    printNoConfig();
+    return;
+  }
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
